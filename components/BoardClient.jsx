@@ -148,6 +148,18 @@ export default function BoardClient({ admin }) {
     return isNaN(dt) ? null : dt.toLocaleDateString([], { month: "short", day: "numeric" });
   };
 
+  // Kickoff time from the full ISO timestamp, in the viewer's local zone.
+  // Fixtures the Premier League hasn't scheduled yet come back as a 00:00 UTC
+  // placeholder — we return null for those so the board never shows a wall of
+  // identical fake times. As real times are assigned, a sync fills them in.
+  const fmtTime = (utc) => {
+    if (!utc) return null;
+    const dt = new Date(utc);
+    if (isNaN(dt)) return null;
+    if (dt.getUTCHours() === 0 && dt.getUTCMinutes() === 0) return null; // unscheduled placeholder
+    return dt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  };
+
   const btn = { fontFamily: "inherit", fontSize: 14, padding: "9px 14px", borderRadius: 8, border: `1px solid ${C.lineStrong}`, background: C.white, color: C.ink, cursor: "pointer", fontWeight: 500 };
   const sel = { fontFamily: "inherit", fontSize: 14, padding: "9px 10px", borderRadius: 8, border: `1px solid ${C.lineStrong}`, background: C.white, color: C.ink, width: "100%" };
   const tierBadge = (t) => (
@@ -231,7 +243,10 @@ export default function BoardClient({ admin }) {
               <div key={m.id}
                 onClick={admin ? () => beginEdit(m) : undefined}
                 style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: `1px dotted ${C.line}`, fontSize: 14, cursor: admin ? "pointer" : "default" }}>
-                <span style={{ fontFamily: MONO, fontSize: 10, color: C.muted, width: 44, flex: "none" }}>{fmtDay(m.date) || ""}</span>
+                <span style={{ display: "flex", flexDirection: "column", gap: 1, width: 44, flex: "none", lineHeight: 1.15 }}>
+                  <span style={{ fontFamily: MONO, fontSize: 10, color: C.muted }}>{fmtDay(m.date) || ""}</span>
+                  {!done && fmtTime(m.utc) && <span style={{ fontFamily: MONO, fontSize: 10, color: C.lineStrong }}>{fmtTime(m.utc)}</span>}
+                </span>
                 <span style={{ flex: 1, textAlign: "right", fontWeight: res === "A" ? 600 : 400 }}>{m.a}</span>
                 <span style={{ fontFamily: MONO, fontSize: 14, width: 44, textAlign: "center", color: done ? C.ink : (admin ? C.pitch : C.muted) }}>
                   {done ? `${m.ga}–${m.gb}` : (admin ? "＋" : "v")}

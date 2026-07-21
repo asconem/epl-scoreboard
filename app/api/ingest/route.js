@@ -87,13 +87,14 @@ export async function POST() {
     const ga = finished ? fm.score?.fullTime?.home : null;
     const gb = finished ? fm.score?.fullTime?.away : null;
     const date = fm.utcDate ? String(fm.utcDate).slice(0, 10) : null;
+    const utc = fm.utcDate || null; // full ISO timestamp; time may be a 00:00 placeholder until the PL assigns it
 
     const k = [mw, ...[a, b].sort()].join("|");
     const pos = index.get(k);
 
     if (pos === undefined) {
       matches.push({
-        id: `fd:${fm.id}`, mw, date, a, b,
+        id: `fd:${fm.id}`, mw, date, utc, a, b,
         ga: Number.isFinite(ga) ? ga : null,
         gb: Number.isFinite(gb) ? gb : null,
         status: finished && Number.isFinite(ga) ? "F" : "S",
@@ -103,7 +104,7 @@ export async function POST() {
     } else {
       const cur = matches[pos];
       if (cur.manual) { skipped++; continue; } // scorer override wins
-      const next = { ...cur, date: date || cur.date };
+      const next = { ...cur, date: date || cur.date, utc: utc || cur.utc };
       if (finished && Number.isFinite(ga) && Number.isFinite(gb)) {
         next.a = a; next.b = b; next.ga = ga; next.gb = gb; next.status = "F";
       }
