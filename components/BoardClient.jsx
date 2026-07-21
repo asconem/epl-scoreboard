@@ -1,0 +1,394 @@
+"use client";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { Trophy, Zap, RefreshCw, X, ChevronDown, ChevronRight, ChevronLeft, LogOut, Ghost, Table2, DownloadCloud, Flag } from "lucide-react";
+import { CLUBS, CMAP, CODE, computeScores, rankStables, upsetGap, matchResult, isFinished, matchesInWeek, currentMatchweek, MATCHWEEKS, WIN } from "@/lib/clubs";
+import { OWNERS, configProblems } from "@/lib/pool-config";
+
+const C = {
+  paper: "#FBFAF7", ink: "#16201B", pitch: "#0B5D3B", line: "#DCD8CF",
+  lineStrong: "#BFC4BC", muted: "#6B726B", gold: "#B5791A", goldBg: "#F6ECD6", white: "#FFFFFF",
+  ghost: "#5E5A6E",
+};
+const OSW = "'Oswald', system-ui, sans-serif";
+const MONO = "ui-monospace, Menlo, Consolas, monospace";
+const EMPTY_NAMES = { 1: "", 2: "", 3: "", 4: "The Leftovers" };
+
+export default function BoardClient({ admin }) {
+  const [matches, setMatches] = useState([]);
+  const [names, setNames] = useState(EMPTY_NAMES);
+  const [seasonComplete, setSeasonComplete] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [synced, setSynced] = useState(null);
+  const [expanded, setExpanded] = useState(null);
+  const [mw, setMw] = useState(null); // null = current
+  const [clubA, setClubA] = useState("");
+  const [clubB, setClubB] = useState("");
+  const [ga, setGa] = useState("");
+  const [gb, setGb] = useState("");
+  const [entryMw, setEntryMw] = useState(1);
+  const [flash, setFlash] = useState(null);
+  const [showTable, setShowTable] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const version = useRef(0);
+  const saving = useRef(false);
+
+  const problems = useMemo(() => configProblems(), []);
+
+  async function pull(initial) {
+    if (saving.current && !initial) return;
+    try {
+      const r = await fetch("/api/board", { cache: "no-store" });
+      const d = await r.json();
+      if (initial || (d.version || 0) > version.current) {
+        version.current = d.version || 0;
+        setMatches(d.matches || []);
+        setNames(d.names || EMPTY_NAMES);
+        setSeasonComplete(!!d.seasonComplete);
+        setSynced(new Date());
+      }
+    } catch (e) { /* ignore */ }
+    if (initial) setLoading(false);
+  }
+  useEffect(() => { pull(true); const id = setInterval(() => pull(false), 15000); return () => clearInterval(id); }, []);
+
+  async function persist(nextMatches, nextNames, nextComplete) {
+    saving.current = true;
+    setMatches(nextMatches); setNames(nextNames); setSeasonComplete(nextComplete);
+    try {
+      const r = await fetch("/api/board/save", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ matches: nextMatches, names: nextNames, seasonComplete: nextComplete }),
+      });
+      if (r.ok) { const d = await r.json(); version.current = d.version; setSynced(new Date()); }
+    } catch (e) { /* ignore */ }
+    saving.current = false;
+  }
+
+  async function syncResults() {
+    setSyncing(true);
+    try {
+      const r = await fetch("/api/ingest", { method: "POST" });
+      const d = await r.json();
+      if (r.ok) {
+        setFlash({ upset: false, text: `Synced — ${d.added} added, ${d.updated} updated${d.skipped ? `, ${d.skipped} manual kept` : ""}` });
+        await pull(true);
+      } else {
+        setFlash({ upset: false, text: `Sync failed: ${d.error || r.status}` });
+      }
+    } catch (e) { setFlash({ upset: false, text: "Sync failed: network error" }); }
+    setSyncing(false);
+    setTimeout(() => setFlash(null), 4000);
+  }
+
+  const scores = useMemo(() => computeScores(matches, seasonComplete), [matches, seasonComplete]);
+  const ranked = useMemo(() => rankStables(scores), [scores]);
+  const curMw = useMemo(() => currentMatchweek(matches), [matches]);
+  const viewMw = mw || curMw;
+  const weekFixtures = useMemo(() => matchesInWeek(matches, viewMw), [matches, viewMw]);
+  const configured = problems.length === 0;
+
+  const nm = (s) => (names[s] && String(names[s]).trim()) || OWNERS[s] || `Stable ${s}`;
+  const ownerOf = (club) => { const c = CMAP[club]; return c && c.s ? nm(c.s) : null; };
+
+  function upsertResult() {
+    if (!clubA || !clubB || clubA === clubB) return;
+    const A = parseInt(ga, 10), B = parseInt(gb, 10);
+    if (!(A >= 0 && B >= 0)) return;
+    const key = (m) => [m.mw, ...[m.a, m.b].sort()].join("|");
+    const target = [entryMw, ...[clubA, clubB].sort()].join("|");
+    const next = [...matches];
+    const pos = next.findIndex(m => key(m) === target);
+    const rec = pos >= 0
+      ? { ...next[pos], a: clubA, b: clubB, ga: A, gb: B, status: "F", manual: true }
+      : { id: `m:${Date.now()}`, mw: entryMw, date: null, a: clubA, b: clubB, ga: A, gb: B, status: "F", manual: true };
+    if (pos >= 0) next[pos] = rec; else next.push(rec);
+    persist(next, names, seasonComplete);
+    const res = A > B ? "A" : (B > A ? "B" : "D");
+    const w = res === "A" ? clubA : clubB, l = res === "A" ? clubB : clubA;
+    const g = res === "D" ? 0 : upsetGap(w, l);
+    setFlash(g ? { upset: true, text: `Upset! ${w} over ${l}  +${g}` } : { upset: false, text: res === "D" ? "Draw logged" : `${w} win logged` });
+    setClubA(""); setClubB(""); setGa(""); setGb("");
+    setTimeout(() => setFlash(null), 3200);
+  }
+  function delMatch(id) { persist(matches.filter(m => m.id !== id), names, seasonComplete); }
+  function setName(s, v) { persist(matches, { ...names, [s]: v }, seasonComplete); }
+  function toggleComplete() {
+    const next = !seasonComplete;
+    if (next && !window.confirm("Mark the season complete? Milestone points (+15 title, +10 top 4, −10 relegation) will be applied from the final table.")) return;
+    persist(matches, names, next);
+  }
+  function resetAll() { if (!window.confirm("Clear every result and start the season over?")) return; persist([], names, false); }
+  async function logout() { await fetch("/api/logout", { method: "POST" }); window.location.href = "/"; }
+
+  const fmtDay = (dateStr) => {
+    if (!dateStr) return null;
+    const [y, mo, d] = String(dateStr).split("-").map(Number);
+    const dt = new Date(y, mo - 1, d);
+    return isNaN(dt) ? null : dt.toLocaleDateString([], { month: "short", day: "numeric" });
+  };
+
+  const btn = { fontFamily: "inherit", fontSize: 14, padding: "9px 14px", borderRadius: 8, border: `1px solid ${C.lineStrong}`, background: C.white, color: C.ink, cursor: "pointer", fontWeight: 500 };
+  const sel = { fontFamily: "inherit", fontSize: 14, padding: "9px 10px", borderRadius: 8, border: `1px solid ${C.lineStrong}`, background: C.white, color: C.ink, width: "100%" };
+  const scoreIn = { fontFamily: MONO, fontSize: 16, padding: "8px 6px", width: 52, textAlign: "center", borderRadius: 8, border: `1px solid ${C.lineStrong}`, background: C.white, color: C.ink };
+  const tierBadge = (t) => (
+    <span style={{ fontFamily: MONO, fontSize: 10, color: C.white, background: t === 1 ? C.pitch : C.muted, borderRadius: 4, padding: "1px 5px" }}>{t ? `T${t}` : "T?"}</span>
+  );
+
+  if (loading) return <div style={{ padding: 40, color: C.muted }}>Loading the board…</div>;
+
+  return (
+    <div style={{ background: C.paper, color: C.ink, padding: "24px 18px 48px", maxWidth: 760, margin: "0 auto", minHeight: "100vh" }}>
+      <div style={{ borderBottom: `3px solid ${C.ink}`, paddingBottom: 12, marginBottom: 16 }}>
+        <div style={{ fontFamily: OSW, fontSize: 12, letterSpacing: ".2em", textTransform: "uppercase", color: C.pitch, fontWeight: 600 }}>Premier League 2026–27 · Stable Pool</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 8 }}>
+          <h1 style={{ fontFamily: OSW, fontSize: 32, fontWeight: 700, textTransform: "uppercase", margin: "2px 0 0", lineHeight: 1 }}>Live Scoreboard</h1>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => pull(false)} style={{ ...btn, display: "flex", alignItems: "center", gap: 6, padding: "6px 11px", fontSize: 13 }}><RefreshCw size={14} /> Refresh</button>
+            {admin && <button onClick={logout} style={{ ...btn, display: "flex", alignItems: "center", gap: 6, padding: "6px 11px", fontSize: 13 }}><LogOut size={14} /> Log out</button>}
+          </div>
+        </div>
+        <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>
+          {admin ? <span style={{ color: C.pitch, fontWeight: 600 }}>Scorer mode</span> : "Read-only view"}
+          {" · "}{synced ? `updated ${synced.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "loading…"}
+          {seasonComplete && <span style={{ color: C.gold, fontWeight: 600 }}> · Final — milestones applied</span>}
+        </div>
+      </div>
+
+      {/* setup banner until tiers + stables are configured */}
+      {!configured &&
+        <div style={{ marginBottom: 16, border: `1px solid ${C.gold}`, background: C.goldBg, borderRadius: 10, padding: "10px 14px", fontSize: 13, color: C.ink }}>
+          <div style={{ fontFamily: OSW, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".1em", fontSize: 12, color: C.gold, marginBottom: 4 }}>Setup needed — lib/pool-config.js</div>
+          {problems.map((p, i) => <div key={i}>· {p}</div>)}
+        </div>}
+
+      {/* matchweek panel */}
+      <div style={{ marginBottom: 16, border: `1px solid ${C.line}`, borderRadius: 10, background: C.white, overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderBottom: `1px solid ${C.line}` }}>
+          <button onClick={() => setMw(Math.max(1, viewMw - 1))} disabled={viewMw <= 1} style={{ ...btn, padding: "4px 8px", opacity: viewMw <= 1 ? 0.4 : 1 }}><ChevronLeft size={14} /></button>
+          <span style={{ fontFamily: OSW, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".1em", fontSize: 13, color: C.pitch, flex: 1, textAlign: "center" }}>
+            Matchweek {viewMw}{viewMw === curMw ? " · current" : ""}
+          </span>
+          <button onClick={() => setMw(Math.min(MATCHWEEKS, viewMw + 1))} disabled={viewMw >= MATCHWEEKS} style={{ ...btn, padding: "4px 8px", opacity: viewMw >= MATCHWEEKS ? 0.4 : 1 }}><ChevronRight size={14} /></button>
+          {mw && mw !== curMw && <button onClick={() => setMw(null)} style={{ ...btn, padding: "4px 10px", fontSize: 12 }}>Now</button>}
+        </div>
+        <div style={{ padding: "6px 12px 10px" }}>
+          {weekFixtures.length === 0 &&
+            <div style={{ fontSize: 13, color: C.muted, padding: "6px 0" }}>
+              No fixtures loaded for this week{admin ? " — use Sync results below to pull the fixture list." : " yet."}
+            </div>}
+          {weekFixtures.map(m => {
+            const done = isFinished(m);
+            const res = matchResult(m);
+            const w = res === "A" ? m.a : res === "B" ? m.b : null;
+            const g = w ? upsetGap(w, res === "A" ? m.b : m.a) : 0;
+            return (
+              <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: `1px dotted ${C.line}`, fontSize: 14 }}>
+                <span style={{ fontFamily: MONO, fontSize: 10, color: C.muted, width: 44, flex: "none" }}>{fmtDay(m.date) || ""}</span>
+                <span style={{ flex: 1, textAlign: "right", fontWeight: res === "A" ? 600 : 400 }}>{m.a}</span>
+                <span style={{ fontFamily: MONO, fontSize: 14, width: 44, textAlign: "center", color: done ? C.ink : C.muted }}>
+                  {done ? `${m.ga}–${m.gb}` : "v"}
+                </span>
+                <span style={{ flex: 1, fontWeight: res === "B" ? 600 : 400 }}>{m.b}</span>
+                <span style={{ width: 34, flex: "none", textAlign: "right" }}>
+                  {g > 0 && <span style={{ fontSize: 11, fontWeight: 600, color: C.gold }}>+{g}</span>}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* pool standings */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {ranked.map((row, i) => {
+          const isLead = i === 0 && row.total > 0;
+          const isGhost = row.s === 4;
+          const open = expanded === row.s;
+          const clubs = CLUBS.filter(c => c.s === row.s).sort((a, b) => (a.t || 9) - (b.t || 9));
+          return (
+            <div key={row.s} style={{ border: `1px solid ${isLead ? C.gold : C.line}`, borderRadius: 10, background: C.white, overflow: "hidden" }}>
+              <div onClick={() => setExpanded(open ? null : row.s)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", cursor: "pointer" }}>
+                <div style={{ fontFamily: OSW, fontSize: 22, fontWeight: 700, width: 26, color: isLead ? C.gold : C.muted, textAlign: "center" }}>{i + 1}</div>
+                {isLead && <Trophy size={18} color={C.gold} />}
+                {isGhost && <Ghost size={16} color={C.ghost} />}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {admin && !isGhost
+                    ? <input value={names[row.s] || ""} onClick={e => e.stopPropagation()} onChange={e => setName(row.s, e.target.value)} placeholder={`Owner ${row.s}`}
+                        style={{ fontFamily: OSW, fontWeight: 600, fontSize: 17, border: "none", background: "transparent", color: C.ink, width: "100%", outline: "none", padding: 0 }} />
+                    : <div style={{ fontFamily: OSW, fontWeight: 600, fontSize: 17, color: isGhost ? C.ghost : C.ink }}>{nm(row.s)}</div>}
+                  <div style={{ fontSize: 11, color: C.muted }}>
+                    GD {row.gd > 0 ? `+${row.gd}` : row.gd} · {row.gf} goals · {row.upset} upset pts
+                    {isGhost && " · wins roll the pot over"}
+                  </div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: C.pitch, lineHeight: 1 }}>{row.total}</div>
+                  <div style={{ fontSize: 10, color: C.muted }}>pts</div>
+                </div>
+                {open ? <ChevronDown size={16} color={C.muted} /> : <ChevronRight size={16} color={C.muted} />}
+              </div>
+              {open &&
+                <div style={{ borderTop: `1px solid ${C.line}`, padding: "6px 12px 10px" }}>
+                  {clubs.length === 0 && <div style={{ fontSize: 13, color: C.muted, padding: "4px 0" }}>Clubs are assigned on draft night.</div>}
+                  {clubs.map(c => {
+                    const pos = scores.position[c.n];
+                    const ms = scores.milestones[c.n];
+                    const d = scores.detail[c.n];
+                    return (
+                      <div key={c.n} style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "3px 0", borderBottom: `1px dotted ${C.line}` }}>
+                        {tierBadge(c.t)}
+                        <span style={{ flex: 1, fontSize: 14 }}>{c.n}</span>
+                        {ms && <span style={{ fontFamily: OSW, fontSize: 9, letterSpacing: ".08em", textTransform: "uppercase", color: ms.value > 0 ? C.gold : C.muted, border: `1px solid ${ms.value > 0 ? C.gold : C.lineStrong}`, borderRadius: 4, padding: "0 4px" }}>{ms.label} {ms.value > 0 ? `+${ms.value}` : ms.value}</span>}
+                        {pos && <span style={{ fontFamily: MONO, fontSize: 11, color: C.muted }}>{pos}{ordinal(pos)}</span>}
+                        <span style={{ fontSize: 11, color: C.muted }}>{d.w}-{d.d}-{d.l}</span>
+                        {d.upset > 0 && <span style={{ fontSize: 11, color: C.gold, fontWeight: 600 }}>+{d.upset} ups</span>}
+                        <span style={{ fontFamily: MONO, fontSize: 14, fontWeight: 600 }}>{scores.pts[c.n]}</span>
+                      </div>
+                    );
+                  })}
+                </div>}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* real league table */}
+      <div style={{ marginTop: 16, border: `1px solid ${C.line}`, borderRadius: 10, background: C.white, overflow: "hidden" }}>
+        <div onClick={() => setShowTable(!showTable)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", cursor: "pointer" }}>
+          <Table2 size={15} color={C.pitch} />
+          <span style={{ fontFamily: OSW, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".1em", fontSize: 13, color: C.pitch, flex: 1 }}>League table</span>
+          <span style={{ fontSize: 12, color: C.muted }}>{showTable ? "Hide" : "Show"}</span>
+          {showTable ? <ChevronDown size={15} color={C.muted} /> : <ChevronRight size={15} color={C.muted} />}
+        </div>
+        {showTable &&
+          <div style={{ borderTop: `1px solid ${C.line}`, padding: "6px 12px 10px" }}>
+            {scores.table.map((r, i) => {
+              const pos = i + 1;
+              const zone = pos === 1 ? C.gold : pos <= 4 ? C.pitch : pos >= 18 ? "#A32D2D" : "transparent";
+              const c = CMAP[r.club];
+              return (
+                <div key={r.club} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", borderBottom: `1px dotted ${C.line}`, fontSize: 13 }}>
+                  <span style={{ width: 3, alignSelf: "stretch", background: zone, borderRadius: 2, flex: "none" }} />
+                  <span style={{ fontFamily: MONO, fontSize: 12, color: C.muted, width: 20, textAlign: "right" }}>{pos}</span>
+                  <span style={{ flex: 1 }}>{r.club}</span>
+                  {c && c.s && <span style={{ fontFamily: OSW, fontSize: 9, letterSpacing: ".06em", textTransform: "uppercase", color: c.s === 4 ? C.ghost : C.muted, border: `1px solid ${C.line}`, borderRadius: 4, padding: "0 4px" }}>{nm(c.s)}</span>}
+                  <span style={{ fontFamily: MONO, fontSize: 11, color: C.muted, width: 24, textAlign: "right" }}>{r.p}</span>
+                  <span style={{ fontFamily: MONO, fontSize: 11, color: C.muted, width: 30, textAlign: "right" }}>{r.gd > 0 ? `+${r.gd}` : r.gd}</span>
+                  <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 600, width: 26, textAlign: "right" }}>{r.pts}</span>
+                </div>
+              );
+            })}
+            <div style={{ fontSize: 10, color: C.muted, paddingTop: 6 }}>P · GD · Pts — gold: title · green: top 4 (+10) · red: relegation (−10)</div>
+          </div>}
+      </div>
+
+      {/* admin tools */}
+      {admin &&
+        <div style={{ marginTop: 22, border: `1px solid ${C.line}`, borderRadius: 10, background: C.white, padding: 14 }}>
+          <div style={{ fontFamily: OSW, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".12em", fontSize: 13, color: C.pitch, marginBottom: 10 }}>Scorer tools</div>
+
+          <button onClick={syncResults} disabled={syncing} style={{ ...btn, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: C.pitch, color: C.white, borderColor: C.pitch, opacity: syncing ? 0.7 : 1 }}>
+            <DownloadCloud size={15} /> {syncing ? "Syncing…" : "Sync fixtures & results"}
+          </button>
+          <div style={{ fontSize: 11, color: C.muted, margin: "6px 0 14px", textAlign: "center" }}>Pulls the fixture list and finished scores from football-data.org. Manual entries below are never overwritten.</div>
+
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 6 }}>Manual entry / correction:</div>
+          <div style={{ display: "grid", gridTemplateColumns: "88px 1fr 1fr", gap: 8 }}>
+            <select value={entryMw} style={sel} onChange={e => setEntryMw(parseInt(e.target.value, 10))}>
+              {Array.from({ length: MATCHWEEKS }, (_, i) => i + 1).map(n => <option key={n} value={n}>MW {n}</option>)}
+            </select>
+            <select value={clubA} style={sel} onChange={e => { setClubA(e.target.value); if (e.target.value === clubB) setClubB(""); }}>
+              <option value="">Home…</option>
+              {CLUBS.map(c => <option key={c.n} value={c.n}>{c.n}{c.t ? ` · T${c.t}` : ""}</option>)}
+            </select>
+            <select value={clubB} style={sel} disabled={!clubA} onChange={e => setClubB(e.target.value)}>
+              <option value="">Away…</option>
+              {CLUBS.filter(c => c.n !== clubA).map(c => <option key={c.n} value={c.n}>{c.n}{c.t ? ` · T${c.t}` : ""}</option>)}
+            </select>
+          </div>
+          {clubA && clubB &&
+            <div style={{ marginTop: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+                <span style={{ fontSize: 14, fontWeight: 600, textAlign: "right", flex: "1 1 0", minWidth: 80 }}>{clubA}</span>
+                <input type="number" min="0" value={ga} onChange={e => setGa(e.target.value)} style={scoreIn} />
+                <span style={{ color: C.muted }}>–</span>
+                <input type="number" min="0" value={gb} onChange={e => setGb(e.target.value)} style={scoreIn} />
+                <span style={{ fontSize: 14, fontWeight: 600, flex: "1 1 0", minWidth: 80 }}>{clubB}</span>
+              </div>
+              <button onClick={upsertResult} disabled={!(parseInt(ga, 10) >= 0 && parseInt(gb, 10) >= 0)} style={{ ...btn, marginTop: 10, width: "100%", background: C.pitch, color: C.white, borderColor: C.pitch }}>Save result</button>
+            </div>}
+
+          {flash &&
+            <div style={{ marginTop: 10, padding: "8px 11px", borderRadius: 8, fontSize: 13, fontWeight: 500, background: flash.upset ? C.goldBg : "#E9F1EC", color: flash.upset ? C.gold : C.pitch, display: "flex", alignItems: "center", gap: 7 }}>
+              {flash.upset && <Zap size={15} />} {flash.text}
+            </div>}
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, paddingTop: 12, borderTop: `1px solid ${C.line}` }}>
+            <Flag size={14} color={seasonComplete ? C.gold : C.muted} />
+            <span style={{ flex: 1, fontSize: 13 }}>Season complete — apply milestones</span>
+            <button onClick={toggleComplete} style={{ ...btn, padding: "5px 12px", fontSize: 12, background: seasonComplete ? C.gold : C.white, color: seasonComplete ? C.white : C.ink, borderColor: seasonComplete ? C.gold : C.lineStrong }}>
+              {seasonComplete ? "On" : "Off"}
+            </button>
+          </div>
+        </div>}
+
+      {/* results log */}
+      <div style={{ marginTop: 22, border: `1px solid ${C.line}`, borderRadius: 10, background: C.white, overflow: "hidden" }}>
+        <div onClick={() => setShowResults(!showResults)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", cursor: "pointer" }}>
+          <span style={{ fontFamily: OSW, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".12em", fontSize: 13, color: C.pitch, flex: 1 }}>Results ({matches.filter(isFinished).length})</span>
+          <span style={{ fontSize: 12, color: C.muted }}>{showResults ? "Hide" : "Show all"}</span>
+          {showResults ? <ChevronDown size={15} color={C.muted} /> : <ChevronRight size={15} color={C.muted} />}
+        </div>
+        {showResults &&
+          <div style={{ borderTop: `1px solid ${C.line}`, padding: "10px 12px 12px" }}>
+            {matches.filter(isFinished).length === 0 && <div style={{ fontSize: 13, color: C.muted, padding: "4px 0" }}>No results yet.</div>}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {[...matches].filter(isFinished).sort((a, b) => (b.mw - a.mw) || String(b.date || "").localeCompare(String(a.date || ""))).map(m => {
+                const res = matchResult(m);
+                const draw = res === "D";
+                const w = res === "A" ? m.a : m.b, l = res === "A" ? m.b : m.a;
+                const g = draw ? 0 : upsetGap(w, l);
+                return (
+                  <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 11px", border: `1px solid ${g ? C.gold : C.line}`, borderRadius: 8, background: C.white }}>
+                    <span style={{ display: "flex", flexDirection: "column", gap: 1, width: 52, flex: "none" }}>
+                      <span style={{ fontFamily: OSW, fontSize: 10, color: C.pitch, textTransform: "uppercase", letterSpacing: ".06em", fontWeight: 600, lineHeight: 1.2 }}>MW {m.mw}</span>
+                      {m.date && <span style={{ fontFamily: MONO, fontSize: 10, color: C.muted, lineHeight: 1.2 }}>{fmtDay(m.date)}</span>}
+                    </span>
+                    <span style={{ flex: 1, fontSize: 14 }}>
+                      <span style={{ fontWeight: res === "A" ? 600 : 400 }}>{m.a}</span> <span style={{ fontFamily: MONO }}>{m.ga}–{m.gb}</span> <span style={{ fontWeight: res === "B" ? 600 : 400 }}>{m.b}</span>
+                      {m.manual && <span style={{ color: C.muted, fontSize: 11 }}> · manual</span>}
+                    </span>
+                    {g > 0 && <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 12, fontWeight: 600, color: C.gold }}><Zap size={12} />+{g}</span>}
+                    <span style={{ fontFamily: MONO, fontSize: 13, color: C.pitch, fontWeight: 600 }}>{draw ? "1 / 1" : `+${WIN}`}</span>
+                    {admin && <X size={15} color={C.muted} style={{ cursor: "pointer" }} onClick={() => delMatch(m.id)} />}
+                  </div>
+                );
+              })}
+            </div>
+          </div>}
+      </div>
+
+      <div style={{ marginTop: 24, borderTop: `1px solid ${C.lineStrong}`, paddingTop: 12 }}>
+        <div onClick={() => setShowKey(!showKey)} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13, color: C.muted, fontWeight: 500 }}>
+          {showKey ? <ChevronDown size={14} /> : <ChevronRight size={14} />} Scoring key
+        </div>
+        {showKey &&
+          <div style={{ fontSize: 13, color: C.muted, marginTop: 8, lineHeight: 1.7 }}>
+            League matches only. Win 3, draw 1, loss 0. Upset bonus on any win by the lower-tier club: add the tier gap (1–4).
+            After matchweek 38: title +15, each other top-4 club +10, each relegated club −10.
+            Ties break by stable goal difference, then goals scored, then upset points.
+            If The Leftovers wins, the pot rolls over to next season.
+          </div>}
+        {admin && <button onClick={resetAll} style={{ ...btn, marginTop: 12, fontSize: 12, padding: "6px 11px", color: C.muted }}>Reset season</button>}
+        {!admin && <div style={{ marginTop: 12 }}><a href="/admin" style={{ fontSize: 12, color: C.muted }}>Scorer login →</a></div>}
+      </div>
+    </div>
+  );
+}
+
+function ordinal(n) {
+  const s = ["th", "st", "nd", "rd"], v = n % 100;
+  return s[(v - 20) % 10] || s[v] || s[0];
+}
