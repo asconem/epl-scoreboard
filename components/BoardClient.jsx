@@ -21,11 +21,13 @@ export default function BoardClient({ admin }) {
   const [synced, setSynced] = useState(null);
   const [expanded, setExpanded] = useState(null);
   const [mw, setMw] = useState(null); // null = current
-  const [clubA, setClubA] = useState("");
-  const [clubB, setClubB] = useState("");
-  const [ga, setGa] = useState("");
-  const [gb, setGb] = useState("");
-  const [entryMw, setEntryMw] = useState(1);
+  const [editing, setEditing] = useState(null); // match id being scored inline
+  const [ega, setEga] = useState("");
+  const [egb, setEgb] = useState("");
+  const [addOpen, setAddOpen] = useState(false); // manual add-fixture form (fallback only)
+  const [naClubA, setNaClubA] = useState("");
+  const [naClubB, setNaClubB] = useState("");
+  const [naMw, setNaMw] = useState(1);
   const [flash, setFlash] = useState(null);
   const [showTable, setShowTable] = useState(false);
   const [showResults, setShowResults] = useState(false);
@@ -92,24 +94,41 @@ export default function BoardClient({ admin }) {
   const nm = (s) => (names[s] && String(names[s]).trim()) || OWNERS[s] || `Stable ${s}`;
   const ownerOf = (club) => { const c = CMAP[club]; return c && c.s ? nm(c.s) : null; };
 
-  function upsertResult() {
-    if (!clubA || !clubB || clubA === clubB) return;
-    const A = parseInt(ga, 10), B = parseInt(gb, 10);
+  function beginEdit(m) {
+    setEditing(m.id);
+    setEga(Number.isFinite(m.ga) ? String(m.ga) : "");
+    setEgb(Number.isFinite(m.gb) ? String(m.gb) : "");
+  }
+  function cancelEdit() { setEditing(null); setEga(""); setEgb(""); }
+
+  // Save a score directly onto an existing fixture row. Home/away come from the
+  // fixture itself — no club selection. Marks the row manual so the sync won't
+  // clobber a hand-entered correction.
+  function saveRowScore(m) {
+    const A = parseInt(ega, 10), B = parseInt(egb, 10);
     if (!(A >= 0 && B >= 0)) return;
-    const key = (m) => [m.mw, ...[m.a, m.b].sort()].join("|");
-    const target = [entryMw, ...[clubA, clubB].sort()].join("|");
-    const next = [...matches];
-    const pos = next.findIndex(m => key(m) === target);
-    const rec = pos >= 0
-      ? { ...next[pos], a: clubA, b: clubB, ga: A, gb: B, status: "F", manual: true }
-      : { id: `m:${Date.now()}`, mw: entryMw, date: null, a: clubA, b: clubB, ga: A, gb: B, status: "F", manual: true };
-    if (pos >= 0) next[pos] = rec; else next.push(rec);
+    const next = matches.map(x => x.id === m.id ? { ...x, ga: A, gb: B, status: "F", manual: true } : x);
     persist(next, names, seasonComplete);
     const res = A > B ? "A" : (B > A ? "B" : "D");
-    const w = res === "A" ? clubA : clubB, l = res === "A" ? clubB : clubA;
+    const w = res === "A" ? m.a : m.b, l = res === "A" ? m.b : m.a;
     const g = res === "D" ? 0 : upsetGap(w, l);
-    setFlash(g ? { upset: true, text: `Upset! ${w} over ${l}  +${g}` } : { upset: false, text: res === "D" ? "Draw logged" : `${w} win logged` });
-    setClubA(""); setClubB(""); setGa(""); setGb("");
+    setFlash(g ? { upset: true, text: `Upset! ${w} over ${l}  +${g}` } : { upset: false, text: res === "D" ? `${m.a} ${A}–${B} ${m.b} · draw` : `${w} win logged` });
+    cancelEdit();
+    setTimeout(() => setFlash(null), 3000);
+  }
+
+  // Fallback: add a fixture the sync doesn't have (rare — e.g. before the first
+  // sync, or a rescheduled game). Adds it scheduled with no score; you then
+  // score it inline like any other row.
+  function addFixture() {
+    if (!naClubA || !naClubB || naClubA === naClubB) return;
+    const dup = matches.find(m => m.mw === naMw && [m.a, m.b].sort().join() === [naClubA, naClubB].sort().join());
+    if (dup) { setFlash({ upset: false, text: "That fixture already exists in this matchweek" }); setTimeout(() => setFlash(null), 3000); return; }
+    const rec = { id: `m:${Date.now()}`, mw: naMw, date: null, a: naClubA, b: naClubB, ga: null, gb: null, status: "S", manual: true };
+    persist([...matches, rec], names, seasonComplete);
+    setNaClubA(""); setNaClubB(""); setAddOpen(false);
+    setMw(naMw);
+    setFlash({ upset: false, text: `Fixture added to MW ${naMw} — score it in the matchweek panel` });
     setTimeout(() => setFlash(null), 3200);
   }
   function delMatch(id) { persist(matches.filter(m => m.id !== id), names, seasonComplete); }
@@ -131,7 +150,6 @@ export default function BoardClient({ admin }) {
 
   const btn = { fontFamily: "inherit", fontSize: 14, padding: "9px 14px", borderRadius: 8, border: `1px solid ${C.lineStrong}`, background: C.white, color: C.ink, cursor: "pointer", fontWeight: 500 };
   const sel = { fontFamily: "inherit", fontSize: 14, padding: "9px 10px", borderRadius: 8, border: `1px solid ${C.lineStrong}`, background: C.white, color: C.ink, width: "100%" };
-  const scoreIn = { fontFamily: MONO, fontSize: 16, padding: "8px 6px", width: 52, textAlign: "center", borderRadius: 8, border: `1px solid ${C.lineStrong}`, background: C.white, color: C.ink };
   const tierBadge = (t) => (
     <span style={{ fontFamily: MONO, fontSize: 10, color: C.white, background: t === 1 ? C.pitch : C.muted, borderRadius: 4, padding: "1px 5px" }}>{t ? `T${t}` : "T?"}</span>
   );
@@ -176,19 +194,42 @@ export default function BoardClient({ admin }) {
         <div style={{ padding: "6px 12px 10px" }}>
           {weekFixtures.length === 0 &&
             <div style={{ fontSize: 13, color: C.muted, padding: "6px 0" }}>
-              No fixtures loaded for this week{admin ? " — use Sync results below to pull the fixture list." : " yet."}
+              No fixtures loaded for this week{admin ? " — hit Sync fixtures & results below to pull the schedule." : " yet."}
             </div>}
           {weekFixtures.map(m => {
             const done = isFinished(m);
             const res = matchResult(m);
             const w = res === "A" ? m.a : res === "B" ? m.b : null;
             const g = w ? upsetGap(w, res === "A" ? m.b : m.a) : 0;
+            const isEditing = editing === m.id;
+
+            if (admin && isEditing) {
+              return (
+                <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderBottom: `1px dotted ${C.line}`, fontSize: 14, background: "#F3F7F4" }}>
+                  <span style={{ flex: 1, textAlign: "right", fontWeight: 600 }}>{m.a}</span>
+                  <input type="number" min="0" autoFocus value={ega} onChange={e => setEga(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") saveRowScore(m); if (e.key === "Escape") cancelEdit(); }}
+                    style={{ fontFamily: MONO, fontSize: 15, width: 38, textAlign: "center", padding: "4px 2px", borderRadius: 6, border: `1px solid ${C.lineStrong}`, background: C.white, color: C.ink }} />
+                  <span style={{ color: C.muted }}>–</span>
+                  <input type="number" min="0" value={egb} onChange={e => setEgb(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") saveRowScore(m); if (e.key === "Escape") cancelEdit(); }}
+                    style={{ fontFamily: MONO, fontSize: 15, width: 38, textAlign: "center", padding: "4px 2px", borderRadius: 6, border: `1px solid ${C.lineStrong}`, background: C.white, color: C.ink }} />
+                  <span style={{ flex: 1, fontWeight: 600 }}>{m.b}</span>
+                  <button onClick={() => saveRowScore(m)} disabled={!(parseInt(ega, 10) >= 0 && parseInt(egb, 10) >= 0)}
+                    style={{ ...btn, padding: "4px 9px", fontSize: 12, background: C.pitch, color: C.white, borderColor: C.pitch }}>Save</button>
+                  <X size={15} color={C.muted} style={{ cursor: "pointer", flex: "none" }} onClick={cancelEdit} />
+                </div>
+              );
+            }
+
             return (
-              <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: `1px dotted ${C.line}`, fontSize: 14 }}>
+              <div key={m.id}
+                onClick={admin ? () => beginEdit(m) : undefined}
+                style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: `1px dotted ${C.line}`, fontSize: 14, cursor: admin ? "pointer" : "default" }}>
                 <span style={{ fontFamily: MONO, fontSize: 10, color: C.muted, width: 44, flex: "none" }}>{fmtDay(m.date) || ""}</span>
                 <span style={{ flex: 1, textAlign: "right", fontWeight: res === "A" ? 600 : 400 }}>{m.a}</span>
-                <span style={{ fontFamily: MONO, fontSize: 14, width: 44, textAlign: "center", color: done ? C.ink : C.muted }}>
-                  {done ? `${m.ga}–${m.gb}` : "v"}
+                <span style={{ fontFamily: MONO, fontSize: 14, width: 44, textAlign: "center", color: done ? C.ink : (admin ? C.pitch : C.muted) }}>
+                  {done ? `${m.ga}–${m.gb}` : (admin ? "＋" : "v")}
                 </span>
                 <span style={{ flex: 1, fontWeight: res === "B" ? 600 : 400 }}>{m.b}</span>
                 <span style={{ width: 34, flex: "none", textAlign: "right" }}>
@@ -197,6 +238,8 @@ export default function BoardClient({ admin }) {
               </div>
             );
           })}
+          {admin && weekFixtures.length > 0 &&
+            <div style={{ fontSize: 11, color: C.muted, paddingTop: 6 }}>Tap any fixture to enter or fix its score. Home/away come from the fixture — no need to pick sides.</div>}
         </div>
       </div>
 
@@ -292,33 +335,31 @@ export default function BoardClient({ admin }) {
           <button onClick={syncResults} disabled={syncing} style={{ ...btn, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: C.pitch, color: C.white, borderColor: C.pitch, opacity: syncing ? 0.7 : 1 }}>
             <DownloadCloud size={15} /> {syncing ? "Syncing…" : "Sync fixtures & results"}
           </button>
-          <div style={{ fontSize: 11, color: C.muted, margin: "6px 0 14px", textAlign: "center" }}>Pulls the fixture list and finished scores from football-data.org. Manual entries below are never overwritten.</div>
+          <div style={{ fontSize: 11, color: C.muted, margin: "6px 0 4px", textAlign: "center" }}>Pulls fixtures and finished scores from football-data.org. To enter or correct a score by hand, tap its fixture in the matchweek panel above — your hand-entered scores are never overwritten by a sync.</div>
 
-          <div style={{ fontSize: 12, color: C.muted, marginBottom: 6 }}>Manual entry / correction:</div>
-          <div style={{ display: "grid", gridTemplateColumns: "88px 1fr 1fr", gap: 8 }}>
-            <select value={entryMw} style={sel} onChange={e => setEntryMw(parseInt(e.target.value, 10))}>
-              {Array.from({ length: MATCHWEEKS }, (_, i) => i + 1).map(n => <option key={n} value={n}>MW {n}</option>)}
-            </select>
-            <select value={clubA} style={sel} onChange={e => { setClubA(e.target.value); if (e.target.value === clubB) setClubB(""); }}>
-              <option value="">Home…</option>
-              {CLUBS.map(c => <option key={c.n} value={c.n}>{c.n}{c.t ? ` · T${c.t}` : ""}</option>)}
-            </select>
-            <select value={clubB} style={sel} disabled={!clubA} onChange={e => setClubB(e.target.value)}>
-              <option value="">Away…</option>
-              {CLUBS.filter(c => c.n !== clubA).map(c => <option key={c.n} value={c.n}>{c.n}{c.t ? ` · T${c.t}` : ""}</option>)}
-            </select>
+          <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.line}` }}>
+            <div onClick={() => setAddOpen(!addOpen)} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12, color: C.muted }}>
+              {addOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Add a missing fixture
+            </div>
+            {addOpen &&
+              <div style={{ marginTop: 8 }}>
+                <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>Only needed if a fixture isn&apos;t in the list (e.g. before the first sync, or a rescheduled game). It&apos;s added blank — then score it in the matchweek panel.</div>
+                <div style={{ display: "grid", gridTemplateColumns: "76px 1fr 1fr", gap: 8 }}>
+                  <select value={naMw} style={sel} onChange={e => setNaMw(parseInt(e.target.value, 10))}>
+                    {Array.from({ length: MATCHWEEKS }, (_, i) => i + 1).map(n => <option key={n} value={n}>MW {n}</option>)}
+                  </select>
+                  <select value={naClubA} style={sel} onChange={e => { setNaClubA(e.target.value); if (e.target.value === naClubB) setNaClubB(""); }}>
+                    <option value="">Home…</option>
+                    {CLUBS.map(c => <option key={c.n} value={c.n}>{c.n}</option>)}
+                  </select>
+                  <select value={naClubB} style={sel} disabled={!naClubA} onChange={e => setNaClubB(e.target.value)}>
+                    <option value="">Away…</option>
+                    {CLUBS.filter(c => c.n !== naClubA).map(c => <option key={c.n} value={c.n}>{c.n}</option>)}
+                  </select>
+                </div>
+                <button onClick={addFixture} disabled={!naClubA || !naClubB} style={{ ...btn, marginTop: 8, width: "100%", fontSize: 13 }}>Add fixture</button>
+              </div>}
           </div>
-          {clubA && clubB &&
-            <div style={{ marginTop: 12 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
-                <span style={{ fontSize: 14, fontWeight: 600, textAlign: "right", flex: "1 1 0", minWidth: 80 }}>{clubA}</span>
-                <input type="number" min="0" value={ga} onChange={e => setGa(e.target.value)} style={scoreIn} />
-                <span style={{ color: C.muted }}>–</span>
-                <input type="number" min="0" value={gb} onChange={e => setGb(e.target.value)} style={scoreIn} />
-                <span style={{ fontSize: 14, fontWeight: 600, flex: "1 1 0", minWidth: 80 }}>{clubB}</span>
-              </div>
-              <button onClick={upsertResult} disabled={!(parseInt(ga, 10) >= 0 && parseInt(gb, 10) >= 0)} style={{ ...btn, marginTop: 10, width: "100%", background: C.pitch, color: C.white, borderColor: C.pitch }}>Save result</button>
-            </div>}
 
           {flash &&
             <div style={{ marginTop: 10, padding: "8px 11px", borderRadius: 8, fontSize: 13, fontWeight: 500, background: flash.upset ? C.goldBg : "#E9F1EC", color: flash.upset ? C.gold : C.pitch, display: "flex", alignItems: "center", gap: 7 }}>
