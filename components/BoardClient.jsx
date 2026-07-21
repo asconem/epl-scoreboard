@@ -184,12 +184,17 @@ export default function BoardClient({ admin }) {
       {/* matchweek panel */}
       <div style={{ marginBottom: 16, border: `1px solid ${C.line}`, borderRadius: 10, background: C.white, overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderBottom: `1px solid ${C.line}` }}>
-          <button onClick={() => setMw(Math.max(1, viewMw - 1))} disabled={viewMw <= 1} style={{ ...btn, padding: "4px 8px", opacity: viewMw <= 1 ? 0.4 : 1 }}><ChevronLeft size={14} /></button>
+          <div style={{ width: 52, flex: "none", display: "flex", justifyContent: "flex-start" }}>
+            {mw && mw !== curMw
+              ? <button onClick={() => setMw(null)} style={{ ...btn, padding: "4px 10px", fontSize: 12 }}>Now</button>
+              : null}
+          </div>
+          <button onClick={() => setMw(Math.max(1, viewMw - 1))} disabled={viewMw <= 1} style={{ ...btn, padding: "4px 8px", opacity: viewMw <= 1 ? 0.4 : 1, flex: "none" }}><ChevronLeft size={14} /></button>
           <span style={{ fontFamily: OSW, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".1em", fontSize: 13, color: C.pitch, flex: 1, textAlign: "center" }}>
             Matchweek {viewMw}{viewMw === curMw ? " · current" : ""}
           </span>
-          <button onClick={() => setMw(Math.min(MATCHWEEKS, viewMw + 1))} disabled={viewMw >= MATCHWEEKS} style={{ ...btn, padding: "4px 8px", opacity: viewMw >= MATCHWEEKS ? 0.4 : 1 }}><ChevronRight size={14} /></button>
-          {mw && mw !== curMw && <button onClick={() => setMw(null)} style={{ ...btn, padding: "4px 10px", fontSize: 12 }}>Now</button>}
+          <button onClick={() => setMw(Math.min(MATCHWEEKS, viewMw + 1))} disabled={viewMw >= MATCHWEEKS} style={{ ...btn, padding: "4px 8px", opacity: viewMw >= MATCHWEEKS ? 0.4 : 1, flex: "none" }}><ChevronRight size={14} /></button>
+          <div style={{ width: 52, flex: "none" }} />
         </div>
         <div style={{ padding: "6px 12px 10px" }}>
           {weekFixtures.length === 0 &&
