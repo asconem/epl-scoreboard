@@ -89,6 +89,20 @@ export default function BoardClient({ admin }) {
   const curMw = useMemo(() => currentMatchweek(matches), [matches]);
   const viewMw = mw || curMw;
   const weekFixtures = useMemo(() => matchesInWeek(matches, viewMw), [matches, viewMw]);
+  // Group the week's fixtures into ordered day buckets. Fixtures with no date
+  // yet (manually added, pre-sync) fall into a trailing "TBD" bucket so they
+  // still show. matchesInWeek already sorts by date then club, so within each
+  // bucket order is correct and the buckets themselves come out chronological.
+  const dayGroups = useMemo(() => {
+    const order = [];
+    const map = new Map();
+    for (const m of weekFixtures) {
+      const key = m.date || "TBD";
+      if (!map.has(key)) { map.set(key, []); order.push(key); }
+      map.get(key).push(m);
+    }
+    return order.map(key => ({ key, fixtures: map.get(key) }));
+  }, [weekFixtures]);
   const configured = problems.length === 0;
 
   const nm = (s) => (names[s] && String(names[s]).trim()) || OWNERS[s] || `Stable ${s}`;
@@ -146,6 +160,15 @@ export default function BoardClient({ admin }) {
     const [y, mo, d] = String(dateStr).split("-").map(Number);
     const dt = new Date(y, mo - 1, d);
     return isNaN(dt) ? null : dt.toLocaleDateString([], { month: "short", day: "numeric" });
+  };
+
+  // Day-group header label, e.g. "Saturday · Aug 22". "TBD" for undated fixtures.
+  const fmtDayHeader = (dateStr) => {
+    if (!dateStr || dateStr === "TBD") return "Date TBD";
+    const [y, mo, d] = String(dateStr).split("-").map(Number);
+    const dt = new Date(y, mo - 1, d);
+    if (isNaN(dt)) return "Date TBD";
+    return `${dt.toLocaleDateString([], { weekday: "long" })} · ${dt.toLocaleDateString([], { month: "short", day: "numeric" })}`;
   };
 
   // Kickoff time from the full ISO timestamp, in the viewer's local zone.
@@ -213,51 +236,59 @@ export default function BoardClient({ admin }) {
             <div style={{ fontSize: 13, color: C.muted, padding: "6px 0" }}>
               No fixtures loaded for this week{admin ? " — hit Sync fixtures & results below to pull the schedule." : " yet."}
             </div>}
-          {weekFixtures.map(m => {
-            const done = isFinished(m);
-            const res = matchResult(m);
-            const w = res === "A" ? m.a : res === "B" ? m.b : null;
-            const g = w ? upsetGap(w, res === "A" ? m.b : m.a) : 0;
-            const isEditing = editing === m.id;
 
-            if (admin && isEditing) {
-              return (
-                <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderBottom: `1px dotted ${C.line}`, fontSize: 14, background: "#F3F7F4" }}>
-                  <span style={{ flex: 1, textAlign: "right", fontWeight: 600 }}>{m.a}</span>
-                  <input type="number" min="0" autoFocus value={ega} onChange={e => setEga(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter") saveRowScore(m); if (e.key === "Escape") cancelEdit(); }}
-                    style={{ fontFamily: MONO, fontSize: 15, width: 38, textAlign: "center", padding: "4px 2px", borderRadius: 6, border: `1px solid ${C.lineStrong}`, background: C.white, color: C.ink }} />
-                  <span style={{ color: C.muted }}>–</span>
-                  <input type="number" min="0" value={egb} onChange={e => setEgb(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter") saveRowScore(m); if (e.key === "Escape") cancelEdit(); }}
-                    style={{ fontFamily: MONO, fontSize: 15, width: 38, textAlign: "center", padding: "4px 2px", borderRadius: 6, border: `1px solid ${C.lineStrong}`, background: C.white, color: C.ink }} />
-                  <span style={{ flex: 1, fontWeight: 600 }}>{m.b}</span>
-                  <button onClick={() => saveRowScore(m)} disabled={!(parseInt(ega, 10) >= 0 && parseInt(egb, 10) >= 0)}
-                    style={{ ...btn, padding: "4px 9px", fontSize: 12, background: C.pitch, color: C.white, borderColor: C.pitch }}>Save</button>
-                  <X size={15} color={C.muted} style={{ cursor: "pointer", flex: "none" }} onClick={cancelEdit} />
-                </div>
-              );
-            }
-
-            return (
-              <div key={m.id}
-                onClick={admin ? () => beginEdit(m) : undefined}
-                style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: `1px dotted ${C.line}`, fontSize: 14, cursor: admin ? "pointer" : "default" }}>
-                <span style={{ display: "flex", flexDirection: "column", gap: 1, width: 44, flex: "none", lineHeight: 1.15 }}>
-                  <span style={{ fontFamily: MONO, fontSize: 10, color: C.muted }}>{fmtDay(m.date) || ""}</span>
-                  {!done && fmtTime(m.utc) && <span style={{ fontFamily: MONO, fontSize: 10, color: C.lineStrong }}>{fmtTime(m.utc)}</span>}
-                </span>
-                <span style={{ flex: 1, textAlign: "right", fontWeight: res === "A" ? 600 : 400 }}>{m.a}</span>
-                <span style={{ fontFamily: MONO, fontSize: 14, width: 44, textAlign: "center", color: done ? C.ink : (admin ? C.pitch : C.muted) }}>
-                  {done ? `${m.ga}–${m.gb}` : (admin ? "＋" : "v")}
-                </span>
-                <span style={{ flex: 1, fontWeight: res === "B" ? 600 : 400 }}>{m.b}</span>
-                <span style={{ width: 34, flex: "none", textAlign: "right" }}>
-                  {g > 0 && <span style={{ fontSize: 11, fontWeight: 600, color: C.gold }}>+{g}</span>}
-                </span>
+          {dayGroups.map(({ key, fixtures }) => (
+            <div key={key}>
+              <div style={{ fontFamily: OSW, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".08em", fontSize: 11, color: C.muted, padding: "10px 0 4px", borderBottom: `1px solid ${C.line}`, marginBottom: 2 }}>
+                {fmtDayHeader(key)}
               </div>
-            );
-          })}
+              {fixtures.map(m => {
+                const done = isFinished(m);
+                const res = matchResult(m);
+                const w = res === "A" ? m.a : res === "B" ? m.b : null;
+                const g = w ? upsetGap(w, res === "A" ? m.b : m.a) : 0;
+                const isEditing = editing === m.id;
+
+                if (admin && isEditing) {
+                  return (
+                    <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderBottom: `1px dotted ${C.line}`, fontSize: 14, background: "#F3F7F4" }}>
+                      <span style={{ flex: 1, textAlign: "right", fontWeight: 600 }}>{m.a}</span>
+                      <input type="number" min="0" autoFocus value={ega} onChange={e => setEga(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") saveRowScore(m); if (e.key === "Escape") cancelEdit(); }}
+                        style={{ fontFamily: MONO, fontSize: 15, width: 38, textAlign: "center", padding: "4px 2px", borderRadius: 6, border: `1px solid ${C.lineStrong}`, background: C.white, color: C.ink }} />
+                      <span style={{ color: C.muted }}>–</span>
+                      <input type="number" min="0" value={egb} onChange={e => setEgb(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") saveRowScore(m); if (e.key === "Escape") cancelEdit(); }}
+                        style={{ fontFamily: MONO, fontSize: 15, width: 38, textAlign: "center", padding: "4px 2px", borderRadius: 6, border: `1px solid ${C.lineStrong}`, background: C.white, color: C.ink }} />
+                      <span style={{ flex: 1, fontWeight: 600 }}>{m.b}</span>
+                      <button onClick={() => saveRowScore(m)} disabled={!(parseInt(ega, 10) >= 0 && parseInt(egb, 10) >= 0)}
+                        style={{ ...btn, padding: "4px 9px", fontSize: 12, background: C.pitch, color: C.white, borderColor: C.pitch }}>Save</button>
+                      <X size={15} color={C.muted} style={{ cursor: "pointer", flex: "none" }} onClick={cancelEdit} />
+                    </div>
+                  );
+                }
+
+                return (
+                  <div key={m.id}
+                    onClick={admin ? () => beginEdit(m) : undefined}
+                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: `1px dotted ${C.line}`, fontSize: 14, cursor: admin ? "pointer" : "default" }}>
+                    <span style={{ fontFamily: MONO, fontSize: 10, color: C.lineStrong, width: 58, flex: "none", whiteSpace: "nowrap" }}>
+                      {!done && fmtTime(m.utc) ? fmtTime(m.utc) : ""}
+                    </span>
+                    <span style={{ flex: 1, textAlign: "right", fontWeight: res === "A" ? 600 : 400 }}>{m.a}</span>
+                    <span style={{ fontFamily: MONO, fontSize: 14, width: 44, textAlign: "center", color: done ? C.ink : (admin ? C.pitch : C.muted) }}>
+                      {done ? `${m.ga}–${m.gb}` : (admin ? "＋" : "v")}
+                    </span>
+                    <span style={{ flex: 1, fontWeight: res === "B" ? 600 : 400 }}>{m.b}</span>
+                    <span style={{ width: 34, flex: "none", textAlign: "right" }}>
+                      {g > 0 && <span style={{ fontSize: 11, fontWeight: 600, color: C.gold }}>+{g}</span>}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+
           {admin && weekFixtures.length > 0 &&
             <div style={{ fontSize: 11, color: C.muted, paddingTop: 6 }}>Tap any fixture to enter or fix its score. Home/away come from the fixture — no need to pick sides.</div>}
         </div>
