@@ -272,7 +272,7 @@ export default function BoardClient({ admin }) {
                   <div key={m.id}
                     onClick={admin ? () => beginEdit(m) : undefined}
                     style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: `1px dotted ${C.line}`, fontSize: 14, cursor: admin ? "pointer" : "default" }}>
-                    <span style={{ fontFamily: MONO, fontSize: 10, color: C.lineStrong, width: 58, flex: "none", whiteSpace: "nowrap" }}>
+                    <span style={{ fontFamily: MONO, fontSize: 10, color: C.muted, width: 58, flex: "none", whiteSpace: "nowrap" }}>
                       {!done && fmtTime(m.utc) ? fmtTime(m.utc) : ""}
                     </span>
                     <span style={{ flex: 1, textAlign: "right", fontWeight: res === "A" ? 600 : 400 }}>{m.a}</span>
