@@ -5,9 +5,9 @@ import { CLUBS, CMAP, CODE, computeScores, rankStables, upsetGap, matchResult, i
 import { OWNERS, configProblems } from "@/lib/pool-config";
 
 const C = {
-  paper: "#FBFAF7", ink: "#16201B", pitch: "#0B5D3B", line: "#DCD8CF",
-  lineStrong: "#BFC4BC", muted: "#6B726B", gold: "#B5791A", goldBg: "#F6ECD6", white: "#FFFFFF",
-  ghost: "#5E5A6E",
+  paper: "#16181C", ink: "#EDEDEA", pitch: "#9EF01A", line: "#2A2E35",
+  lineStrong: "#3A404A", muted: "#8B9199", gold: "#E0A93B", goldBg: "#2A2415", white: "#1E2127",
+  ghost: "#9A93B5", onAccent: "#0C1005", relegate: "#FF6B5E",
 };
 const OSW = "'Oswald', system-ui, sans-serif";
 const MONO = "ui-monospace, Menlo, Consolas, monospace";
@@ -186,7 +186,7 @@ export default function BoardClient({ admin }) {
   const btn = { fontFamily: "inherit", fontSize: 14, padding: "9px 14px", borderRadius: 8, border: `1px solid ${C.lineStrong}`, background: C.white, color: C.ink, cursor: "pointer", fontWeight: 500 };
   const sel = { fontFamily: "inherit", fontSize: 14, padding: "9px 10px", borderRadius: 8, border: `1px solid ${C.lineStrong}`, background: C.white, color: C.ink, width: "100%" };
   const tierBadge = (t) => (
-    <span style={{ fontFamily: MONO, fontSize: 10, color: C.white, background: t === 1 ? C.pitch : C.muted, borderRadius: 4, padding: "1px 5px" }}>{t ? `T${t}` : "T?"}</span>
+    <span style={{ fontFamily: MONO, fontSize: 10, color: t === 1 ? C.onAccent : C.paper, background: t === 1 ? C.pitch : C.muted, borderRadius: 4, padding: "1px 5px" }}>{t ? `T${t}` : "T?"}</span>
   );
 
   if (loading) return <div style={{ padding: 40, color: C.muted }}>Loading the board…</div>;
@@ -251,7 +251,7 @@ export default function BoardClient({ admin }) {
 
                 if (admin && isEditing) {
                   return (
-                    <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderBottom: `1px dotted ${C.line}`, fontSize: 14, background: "#F3F7F4" }}>
+                    <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderBottom: `1px dotted ${C.line}`, fontSize: 14, background: "#20261A" }}>
                       <span style={{ flex: 1, textAlign: "right", fontWeight: 600 }}>{m.a}</span>
                       <input type="number" min="0" autoFocus value={ega} onChange={e => setEga(e.target.value)}
                         onKeyDown={e => { if (e.key === "Enter") saveRowScore(m); if (e.key === "Escape") cancelEdit(); }}
@@ -262,7 +262,7 @@ export default function BoardClient({ admin }) {
                         style={{ fontFamily: MONO, fontSize: 15, width: 38, textAlign: "center", padding: "4px 2px", borderRadius: 6, border: `1px solid ${C.lineStrong}`, background: C.white, color: C.ink }} />
                       <span style={{ flex: 1, fontWeight: 600 }}>{m.b}</span>
                       <button onClick={() => saveRowScore(m)} disabled={!(parseInt(ega, 10) >= 0 && parseInt(egb, 10) >= 0)}
-                        style={{ ...btn, padding: "4px 9px", fontSize: 12, background: C.pitch, color: C.white, borderColor: C.pitch }}>Save</button>
+                        style={{ ...btn, padding: "4px 9px", fontSize: 12, background: C.pitch, color: C.onAccent, borderColor: C.pitch }}>Save</button>
                       <X size={15} color={C.muted} style={{ cursor: "pointer", flex: "none" }} onClick={cancelEdit} />
                     </div>
                   );
@@ -360,7 +360,7 @@ export default function BoardClient({ admin }) {
           <div style={{ borderTop: `1px solid ${C.line}`, padding: "6px 12px 10px" }}>
             {scores.table.map((r, i) => {
               const pos = i + 1;
-              const zone = pos === 1 ? C.gold : pos <= 4 ? C.pitch : pos >= 18 ? "#A32D2D" : "transparent";
+              const zone = pos === 1 ? C.gold : pos <= 4 ? C.pitch : pos >= 18 ? C.relegate : "transparent";
               const c = CMAP[r.club];
               return (
                 <div key={r.club} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", borderBottom: `1px dotted ${C.line}`, fontSize: 13 }}>
@@ -383,7 +383,7 @@ export default function BoardClient({ admin }) {
         <div style={{ marginTop: 22, border: `1px solid ${C.line}`, borderRadius: 10, background: C.white, padding: 14 }}>
           <div style={{ fontFamily: OSW, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".12em", fontSize: 13, color: C.pitch, marginBottom: 10 }}>Scorer tools</div>
 
-          <button onClick={syncResults} disabled={syncing} style={{ ...btn, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: C.pitch, color: C.white, borderColor: C.pitch, opacity: syncing ? 0.7 : 1 }}>
+          <button onClick={syncResults} disabled={syncing} style={{ ...btn, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: C.pitch, color: C.onAccent, borderColor: C.pitch, opacity: syncing ? 0.7 : 1 }}>
             <DownloadCloud size={15} /> {syncing ? "Syncing…" : "Sync fixtures & results"}
           </button>
           <div style={{ fontSize: 11, color: C.muted, margin: "6px 0 4px", textAlign: "center" }}>Pulls fixtures and finished scores from football-data.org. To enter or correct a score by hand, tap its fixture in the matchweek panel above — your hand-entered scores are never overwritten by a sync.</div>
@@ -413,14 +413,14 @@ export default function BoardClient({ admin }) {
           </div>
 
           {flash &&
-            <div style={{ marginTop: 10, padding: "8px 11px", borderRadius: 8, fontSize: 13, fontWeight: 500, background: flash.upset ? C.goldBg : "#E9F1EC", color: flash.upset ? C.gold : C.pitch, display: "flex", alignItems: "center", gap: 7 }}>
+            <div style={{ marginTop: 10, padding: "8px 11px", borderRadius: 8, fontSize: 13, fontWeight: 500, background: flash.upset ? C.goldBg : "#1C2618", color: flash.upset ? C.gold : C.pitch, display: "flex", alignItems: "center", gap: 7 }}>
               {flash.upset && <Zap size={15} />} {flash.text}
             </div>}
 
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, paddingTop: 12, borderTop: `1px solid ${C.line}` }}>
             <Flag size={14} color={seasonComplete ? C.gold : C.muted} />
             <span style={{ flex: 1, fontSize: 13 }}>Season complete — apply milestones</span>
-            <button onClick={toggleComplete} style={{ ...btn, padding: "5px 12px", fontSize: 12, background: seasonComplete ? C.gold : C.white, color: seasonComplete ? C.white : C.ink, borderColor: seasonComplete ? C.gold : C.lineStrong }}>
+            <button onClick={toggleComplete} style={{ ...btn, padding: "5px 12px", fontSize: 12, background: seasonComplete ? C.gold : C.white, color: seasonComplete ? C.onAccent : C.ink, borderColor: seasonComplete ? C.gold : C.lineStrong }}>
               {seasonComplete ? "On" : "Off"}
             </button>
           </div>
