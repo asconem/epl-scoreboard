@@ -374,7 +374,7 @@ export default function BoardClient({ admin }) {
                 </div>
               );
             })}
-            <div style={{ fontSize: 10, color: C.muted, paddingTop: 6 }}>P · GD · Pts — gold: title · green: top 4 (+10) · red: relegation (−10)</div>
+            <div style={{ fontSize: 10, color: C.muted, paddingTop: 6 }}>P · GD · Pts — gold: title (+15) · green: top 4 (+10) · red: relegation (−10)</div>
           </div>}
       </div>
 
