@@ -1,18 +1,20 @@
 # EPL Stable Pool — Live Scoreboard (2026–27)
 
-Three owners, one ghost stable (The Leftovers), all 20 Premier League clubs.
+Four owners, one ghost stable (The Leftovers), all 20 Premier League clubs.
 Sibling of the World Cup stable pool board — same stack (Next.js 14 · Upstash
 Redis · Vercel), same one-scorer / everyone-watches model.
 
 ## Season setup (August)
 
 1. `lib/pool-config.js` is the only file you touch:
-   - Fill in `tier` for all 20 clubs from the bookmaker points lines (5 tiers of 4).
-   - After draft night, fill in `stable` for all 20 clubs and the three owner
-     names in `OWNERS`. Stable 4 is The Leftovers.
+   - Fill in `tier` for all 20 clubs from the bookmaker points lines (4 tiers of 5).
+   - After draft night, fill in `stable` for all 20 clubs and the four owner
+     names in `OWNERS`. Stable 5 is The Leftovers. Each stable gets four clubs,
+     one from each of the four tiers.
    - The board shows a setup banner until the config validates.
 2. Env vars (Vercel → Settings → Environment Variables): `UPSTASH_REDIS_REST_URL`,
-   `UPSTASH_REDIS_REST_TOKEN`, `ADMIN_PASSWORD`, `FOOTBALL_DATA_TOKEN`.
+   `UPSTASH_REDIS_REST_TOKEN`, `ADMIN_PASSWORD`, `FOOTBALL_DATA_TOKEN`,
+   and a long random `CRON_SECRET`.
 
    Getting the football-data token:
    - Register at https://www.football-data.org/client/register (free tier:
@@ -29,7 +31,17 @@ Redis · Vercel), same one-scorer / everyone-watches model.
 
 ## Running the season
 
-- After a matchweek: open `/admin`, hit **Sync fixtures & results**. Done.
+- `vercel.json` calls `/api/live` once a minute. The endpoint checks the saved
+  fixture times first and only calls football-data.org from 15 minutes before
+  kickoff until three hours afterward. The deployment plan must support
+  one-minute cron schedules.
+- Live scores and provisional stable standings update automatically. Public
+  boards poll the saved state every 15 seconds and never expose the provider
+  token or consume provider quota directly.
+- The cron endpoint requires `Authorization: Bearer $CRON_SECRET`; Vercel adds
+  that header automatically when the environment variable is configured.
+- After deployment, open `/admin` and hit **Sync fixtures & results** once to
+  load the schedule. The same button remains the manual sync fallback.
 - Corrections: manual entry in the scorer tools upserts a result and marks it
   `manual` — the sync never overwrites manual entries.
 - After matchweek 38: flip **Season complete** to apply milestones
