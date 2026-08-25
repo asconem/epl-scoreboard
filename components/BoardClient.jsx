@@ -1,8 +1,8 @@
 "use client";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Trophy, Zap, RefreshCw, X, ChevronDown, ChevronRight, ChevronLeft, LogOut, Ghost, Table2, DownloadCloud, Flag } from "lucide-react";
-import { CLUBS, CMAP, CODE, computeScores, rankStables, upsetGap, matchResult, isFinished, matchesInWeek, currentMatchweek, MATCHWEEKS, WIN } from "@/lib/clubs";
-import { OWNERS, configProblems } from "@/lib/pool-config";
+import { CLUBS, CMAP, CODE, computeScores, rankStables, upsetGap, matchResult, isFinished, hasCompleteSeason, matchesInWeek, currentMatchweek, MATCHWEEKS, TOTAL_MATCHES, WIN } from "@/lib/clubs";
+import { OWNERS, OWNER_CONFIG_VERSION, configProblems } from "@/lib/pool-config";
 
 const C = {
   paper: "#16181C", ink: "#EDEDEA", pitch: "#9EF01A", line: "#2A2E35",
@@ -56,16 +56,25 @@ export default function BoardClient({ admin }) {
   useEffect(() => { pull(true); const id = setInterval(() => pull(false), 15000); return () => clearInterval(id); }, []);
 
   async function persist(nextMatches, nextNames, nextComplete) {
+    const previousMatches = matches, previousNames = names, previousComplete = seasonComplete;
     saving.current = true;
     setMatches(nextMatches); setNames(nextNames); setSeasonComplete(nextComplete);
     try {
       const r = await fetch("/api/board/save", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ matches: nextMatches, names: nextNames, seasonComplete: nextComplete }),
+        body: JSON.stringify({ matches: nextMatches, names: nextNames, seasonComplete: nextComplete, ownerConfigVersion: OWNER_CONFIG_VERSION }),
       });
-      if (r.ok) { const d = await r.json(); version.current = d.version; setSynced(new Date()); }
-    } catch (e) { /* ignore */ }
-    saving.current = false;
+      if (!r.ok) throw new Error(`save returned ${r.status}`);
+      const d = await r.json();
+      version.current = d.version; setSynced(new Date());
+    } catch (e) {
+      setMatches(previousMatches); setNames(previousNames); setSeasonComplete(previousComplete);
+      setFlash({ upset: false, error: true, text: "Save failed — your change was not stored. The board has been reloaded." });
+      await pull(true);
+      setTimeout(() => setFlash(null), 5000);
+    } finally {
+      saving.current = false;
+    }
   }
 
   async function syncResults() {
@@ -149,6 +158,11 @@ export default function BoardClient({ admin }) {
   function setName(s, v) { persist(matches, { ...names, [s]: v }, seasonComplete); }
   function toggleComplete() {
     const next = !seasonComplete;
+    if (next && !hasCompleteSeason(matches)) {
+      setFlash({ upset: false, error: true, text: `Season cannot be completed until all ${TOTAL_MATCHES} fixtures have final scores.` });
+      setTimeout(() => setFlash(null), 5000);
+      return;
+    }
     if (next && !window.confirm("Mark the season complete? Milestone points (+15 title, +10 top 4, −10 relegation) will be applied from the final table.")) return;
     persist(matches, names, next);
   }
@@ -413,7 +427,7 @@ export default function BoardClient({ admin }) {
           </div>
 
           {flash &&
-            <div style={{ marginTop: 10, padding: "8px 11px", borderRadius: 8, fontSize: 13, fontWeight: 500, background: flash.upset ? C.goldBg : "#1C2618", color: flash.upset ? C.gold : C.pitch, display: "flex", alignItems: "center", gap: 7 }}>
+            <div style={{ marginTop: 10, padding: "8px 11px", borderRadius: 8, fontSize: 13, fontWeight: 500, background: flash.error ? "#2B1919" : (flash.upset ? C.goldBg : "#1C2618"), color: flash.error ? C.relegate : (flash.upset ? C.gold : C.pitch), display: "flex", alignItems: "center", gap: 7 }}>
               {flash.upset && <Zap size={15} />} {flash.text}
             </div>}
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { isAdmin } from "@/lib/auth";
-import { getBoard, saveBoard } from "@/lib/redis";
+import { getBoardStrict, saveBoard } from "@/lib/redis";
 import { CMAP } from "@/lib/clubs";
 
 export const dynamic = "force-dynamic";
@@ -68,7 +68,12 @@ export async function POST() {
     return NextResponse.json({ error: "could not reach football-data.org" }, { status: 502 });
   }
 
-  const board = await getBoard();
+  let board;
+  try {
+    board = await getBoardStrict();
+  } catch (e) {
+    return NextResponse.json({ error: "could not read saved board" }, { status: 503 });
+  }
   const matches = [...(board.matches || [])];
   const index = new Map(); // "mw|a|b" (order-independent) → array position
   matches.forEach((m, i) => {
@@ -97,7 +102,7 @@ export async function POST() {
         id: `fd:${fm.id}`, mw, date, utc, a, b,
         ga: Number.isFinite(ga) ? ga : null,
         gb: Number.isFinite(gb) ? gb : null,
-        status: finished && Number.isFinite(ga) ? "F" : "S",
+        status: finished && Number.isFinite(ga) && Number.isFinite(gb) ? "F" : "S",
       });
       index.set(k, matches.length - 1);
       added++;
