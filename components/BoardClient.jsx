@@ -11,7 +11,7 @@ const C = {
 };
 const OSW = "'Oswald', system-ui, sans-serif";
 const MONO = "ui-monospace, Menlo, Consolas, monospace";
-const EMPTY_NAMES = { 1: "", 2: "", 3: "", 4: "The Leftovers" };
+const EMPTY_NAMES = { 1: "", 2: "", 3: "", 4: "", 5: "The Leftovers" };
 
 export default function BoardClient({ admin }) {
   const [matches, setMatches] = useState([]);
@@ -298,7 +298,7 @@ export default function BoardClient({ admin }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {ranked.map((row, i) => {
           const isLead = i === 0 && row.total > 0;
-          const isGhost = row.s === 4;
+          const isGhost = row.s === 5;
           const open = expanded === row.s;
           const clubs = CLUBS.filter(c => c.s === row.s).sort((a, b) => (a.t || 9) - (b.t || 9));
           return (
@@ -367,7 +367,7 @@ export default function BoardClient({ admin }) {
                   <span style={{ width: 3, alignSelf: "stretch", background: zone, borderRadius: 2, flex: "none" }} />
                   <span style={{ fontFamily: MONO, fontSize: 12, color: C.muted, width: 20, textAlign: "right" }}>{pos}</span>
                   <span style={{ flex: 1 }}>{r.club}</span>
-                  {c && c.s && <span style={{ fontFamily: OSW, fontSize: 9, letterSpacing: ".06em", textTransform: "uppercase", color: c.s === 4 ? C.ghost : C.muted, border: `1px solid ${C.line}`, borderRadius: 4, padding: "0 4px" }}>{nm(c.s)}</span>}
+                  {c && c.s && <span style={{ fontFamily: OSW, fontSize: 9, letterSpacing: ".06em", textTransform: "uppercase", color: c.s === 5 ? C.ghost : C.muted, border: `1px solid ${C.line}`, borderRadius: 4, padding: "0 4px" }}>{nm(c.s)}</span>}
                   <span style={{ fontFamily: MONO, fontSize: 11, color: C.muted, width: 24, textAlign: "right" }}>{r.p}</span>
                   <span style={{ fontFamily: MONO, fontSize: 11, color: C.muted, width: 30, textAlign: "right" }}>{r.gd > 0 ? `+${r.gd}` : r.gd}</span>
                   <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 600, width: 26, textAlign: "right" }}>{r.pts}</span>
@@ -468,7 +468,7 @@ export default function BoardClient({ admin }) {
         </div>
         {showKey &&
           <div style={{ fontSize: 13, color: C.muted, marginTop: 8, lineHeight: 1.7 }}>
-            League matches only. Win 3, draw 1, loss 0. Upset bonus on any win by the lower-tier club: add the tier gap (1–4).
+            League matches only. Win 3, draw 1, loss 0. Upset bonus on any win by the lower-tier club: add the tier gap (1–3).
             After matchweek 38: title +15, each other top-4 club +10, each relegated club −10.
             Ties break by stable goal difference, then goals scored, then upset points.
             If The Leftovers wins, the pot rolls over to next season.

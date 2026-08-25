@@ -2,7 +2,7 @@ import "./globals.css";
 
 export const metadata = {
   title: "EPL Stable Pool — Live Scoreboard",
-  description: "Three owners, one ghost stable, all 20 clubs.",
+  description: "Four owners, one ghost stable, all 20 clubs.",
 };
 
 export default function RootLayout({ children }) {

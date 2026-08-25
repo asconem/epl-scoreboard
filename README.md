@@ -1,15 +1,16 @@
 # EPL Stable Pool — Live Scoreboard (2026–27)
 
-Three owners, one ghost stable (The Leftovers), all 20 Premier League clubs.
+Four owners, one ghost stable (The Leftovers), all 20 Premier League clubs.
 Sibling of the World Cup stable pool board — same stack (Next.js 14 · Upstash
 Redis · Vercel), same one-scorer / everyone-watches model.
 
 ## Season setup (August)
 
 1. `lib/pool-config.js` is the only file you touch:
-   - Fill in `tier` for all 20 clubs from the bookmaker points lines (5 tiers of 4).
-   - After draft night, fill in `stable` for all 20 clubs and the three owner
-     names in `OWNERS`. Stable 4 is The Leftovers.
+   - Fill in `tier` for all 20 clubs from the bookmaker points lines (4 tiers of 5).
+   - After draft night, fill in `stable` for all 20 clubs and the four owner
+     names in `OWNERS`. Stable 5 is The Leftovers. Each stable gets four clubs,
+     one from each tier.
    - The board shows a setup banner until the config validates.
 2. Env vars (Vercel → Settings → Environment Variables): `UPSTASH_REDIS_REST_URL`,
    `UPSTASH_REDIS_REST_TOKEN`, `ADMIN_PASSWORD`, `FOOTBALL_DATA_TOKEN`.
