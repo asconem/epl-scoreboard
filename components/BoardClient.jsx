@@ -269,7 +269,10 @@ export default function BoardClient({ admin }) {
                 if (admin && isEditing) {
                   return (
                     <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderBottom: `1px dotted ${C.line}`, fontSize: 14, background: "#20261A" }}>
-                      <span style={{ flex: 1, textAlign: "right", fontWeight: 600 }}>{m.a}</span>
+                      <div style={{ flex: 1, minWidth: 0, textAlign: "right" }}>
+                        <div style={{ fontWeight: 600 }}>{m.a}</div>
+                        <div style={{ fontFamily: OSW, fontSize: 9, letterSpacing: ".06em", textTransform: "uppercase", color: CMAP[m.a]?.s === 5 ? C.ghost : C.muted, marginTop: 2 }}>{ownerOf(m.a)}</div>
+                      </div>
                       <input type="number" min="0" autoFocus value={ega} onChange={e => setEga(e.target.value)}
                         onKeyDown={e => { if (e.key === "Enter") saveRowScore(m); if (e.key === "Escape") cancelEdit(); }}
                         style={{ fontFamily: MONO, fontSize: 15, width: 38, textAlign: "center", padding: "4px 2px", borderRadius: 6, border: `1px solid ${C.lineStrong}`, background: C.white, color: C.ink }} />
@@ -277,7 +280,10 @@ export default function BoardClient({ admin }) {
                       <input type="number" min="0" value={egb} onChange={e => setEgb(e.target.value)}
                         onKeyDown={e => { if (e.key === "Enter") saveRowScore(m); if (e.key === "Escape") cancelEdit(); }}
                         style={{ fontFamily: MONO, fontSize: 15, width: 38, textAlign: "center", padding: "4px 2px", borderRadius: 6, border: `1px solid ${C.lineStrong}`, background: C.white, color: C.ink }} />
-                      <span style={{ flex: 1, fontWeight: 600 }}>{m.b}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600 }}>{m.b}</div>
+                        <div style={{ fontFamily: OSW, fontSize: 9, letterSpacing: ".06em", textTransform: "uppercase", color: CMAP[m.b]?.s === 5 ? C.ghost : C.muted, marginTop: 2 }}>{ownerOf(m.b)}</div>
+                      </div>
                       <button onClick={() => saveRowScore(m)} disabled={!(parseInt(ega, 10) >= 0 && parseInt(egb, 10) >= 0)}
                         style={{ ...btn, padding: "4px 9px", fontSize: 12, background: C.pitch, color: C.onAccent, borderColor: C.pitch }}>Save</button>
                       <X size={15} color={C.muted} style={{ cursor: "pointer", flex: "none" }} onClick={cancelEdit} />
@@ -292,11 +298,17 @@ export default function BoardClient({ admin }) {
                     <span style={{ fontFamily: MONO, fontSize: 10, color: C.muted, width: 58, flex: "none", whiteSpace: "nowrap" }}>
                       {live ? <span style={{ color: C.relegate, fontWeight: 700 }}>LIVE</span> : (!done && fmtTime(m.utc) ? fmtTime(m.utc) : "")}
                     </span>
-                    <span style={{ flex: 1, textAlign: "right", fontWeight: res === "A" ? 600 : 400 }}>{m.a}</span>
+                    <div style={{ flex: 1, minWidth: 0, textAlign: "right" }}>
+                      <div style={{ fontWeight: res === "A" ? 600 : 400 }}>{m.a}</div>
+                      <div style={{ fontFamily: OSW, fontSize: 9, letterSpacing: ".06em", textTransform: "uppercase", color: CMAP[m.a]?.s === 5 ? C.ghost : C.muted, marginTop: 2 }}>{ownerOf(m.a)}</div>
+                    </div>
                     <span style={{ fontFamily: MONO, fontSize: 14, width: 44, textAlign: "center", color: live ? C.relegate : (done ? C.ink : (admin ? C.pitch : C.muted)) }}>
                       {done || live ? `${m.ga}–${m.gb}` : (admin ? "＋" : "v")}
                     </span>
-                    <span style={{ flex: 1, fontWeight: res === "B" ? 600 : 400 }}>{m.b}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: res === "B" ? 600 : 400 }}>{m.b}</div>
+                      <div style={{ fontFamily: OSW, fontSize: 9, letterSpacing: ".06em", textTransform: "uppercase", color: CMAP[m.b]?.s === 5 ? C.ghost : C.muted, marginTop: 2 }}>{ownerOf(m.b)}</div>
+                    </div>
                     <span style={{ width: 34, flex: "none", textAlign: "right" }}>
                       {g > 0 && <span style={{ fontSize: 11, fontWeight: 600, color: C.gold }}>+{g}</span>}
                     </span>
