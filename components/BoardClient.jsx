@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Trophy, Zap, RefreshCw, X, ChevronDown, ChevronRight, ChevronLeft, LogOut, Ghost, Table2, DownloadCloud, Flag } from "lucide-react";
-import { CLUBS, CMAP, CODE, computeScores, rankStables, upsetGap, matchResult, isFinished, hasCompleteSeason, matchesInWeek, currentMatchweek, MATCHWEEKS, TOTAL_MATCHES, WIN } from "@/lib/clubs";
+import { CLUBS, CMAP, CODE, computeScores, rankStables, upsetGap, matchResult, isFinished, isLive, hasCompleteSeason, matchesInWeek, currentMatchweek, MATCHWEEKS, TOTAL_MATCHES, WIN } from "@/lib/clubs";
 import { OWNERS, OWNER_CONFIG_VERSION, configProblems } from "@/lib/pool-config";
 
 const C = {
@@ -98,6 +98,7 @@ export default function BoardClient({ admin }) {
   const curMw = useMemo(() => currentMatchweek(matches), [matches]);
   const viewMw = mw || curMw;
   const weekFixtures = useMemo(() => matchesInWeek(matches, viewMw), [matches, viewMw]);
+  const liveCount = useMemo(() => matches.filter(isLive).length, [matches]);
   // Group the week's fixtures into ordered day buckets. Fixtures with no date
   // yet (manually added, pre-sync) fall into a trailing "TBD" bucket so they
   // still show. matchesInWeek already sorts by date then club, so within each
@@ -220,6 +221,7 @@ export default function BoardClient({ admin }) {
           {admin ? <span style={{ color: C.pitch, fontWeight: 600 }}>Scorer mode</span> : "Read-only view"}
           {" · "}{synced ? `updated ${synced.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "loading…"}
           {seasonComplete && <span style={{ color: C.gold, fontWeight: 600 }}> · Final — milestones applied</span>}
+          {liveCount > 0 && <span style={{ color: C.relegate, fontWeight: 700 }}> · {liveCount} live · standings are provisional</span>}
         </div>
       </div>
 
@@ -258,6 +260,7 @@ export default function BoardClient({ admin }) {
               </div>
               {fixtures.map(m => {
                 const done = isFinished(m);
+                const live = isLive(m);
                 const res = matchResult(m);
                 const w = res === "A" ? m.a : res === "B" ? m.b : null;
                 const g = w ? upsetGap(w, res === "A" ? m.b : m.a) : 0;
@@ -287,11 +290,11 @@ export default function BoardClient({ admin }) {
                     onClick={admin ? () => beginEdit(m) : undefined}
                     style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: `1px dotted ${C.line}`, fontSize: 14, cursor: admin ? "pointer" : "default" }}>
                     <span style={{ fontFamily: MONO, fontSize: 10, color: C.muted, width: 58, flex: "none", whiteSpace: "nowrap" }}>
-                      {!done && fmtTime(m.utc) ? fmtTime(m.utc) : ""}
+                      {live ? <span style={{ color: C.relegate, fontWeight: 700 }}>LIVE</span> : (!done && fmtTime(m.utc) ? fmtTime(m.utc) : "")}
                     </span>
                     <span style={{ flex: 1, textAlign: "right", fontWeight: res === "A" ? 600 : 400 }}>{m.a}</span>
-                    <span style={{ fontFamily: MONO, fontSize: 14, width: 44, textAlign: "center", color: done ? C.ink : (admin ? C.pitch : C.muted) }}>
-                      {done ? `${m.ga}–${m.gb}` : (admin ? "＋" : "v")}
+                    <span style={{ fontFamily: MONO, fontSize: 14, width: 44, textAlign: "center", color: live ? C.relegate : (done ? C.ink : (admin ? C.pitch : C.muted)) }}>
+                      {done || live ? `${m.ga}–${m.gb}` : (admin ? "＋" : "v")}
                     </span>
                     <span style={{ flex: 1, fontWeight: res === "B" ? 600 : 400 }}>{m.b}</span>
                     <span style={{ width: 34, flex: "none", textAlign: "right" }}>

@@ -1,0 +1,30 @@
+name: Refresh live scores
+
+on:
+  schedule:
+    # Covers EPL kickoff windows while avoiding overnight no-op runners.
+    - cron: "*/5 11-23 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-score-refresh
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Call the secured live-score endpoint
+        env:
+          SCOREBOARD_URL: ${{ vars.SCOREBOARD_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          test -n "$SCOREBOARD_URL"
+          test -n "$CRON_SECRET"
+          curl --fail --silent --show-error --retry 2 --max-time 30 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "${SCOREBOARD_URL%/}/api/live"
