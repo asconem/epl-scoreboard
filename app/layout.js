@@ -3,6 +3,10 @@ import "./globals.css";
 export const metadata = {
   title: "EPL Stable Pool — Live Scoreboard",
   description: "Four owners, one ghost stable, all 20 clubs.",
+  other: { "apple-mobile-web-app-title": "EPL Pool" },
+  icons: {
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
 };
 
 export default function RootLayout({ children }) {
